@@ -25,7 +25,13 @@ import org.apache.spark.api.java.{JavaPairRDD, JavaRDD}
 /**
  * Created by mushahidalam on 11/26/16.
  */
-
+/*
+ *Question 2:
+ *Find the most popular vertex. A vertex is the most popular if it has the most number of edges to its neighbors and
+ * it has the maximum number of words. If there are many satisfying the above criteria, pick any one you desire.
+ * Hint: to solve this question please refer to the Neighborhood Aggregation examples from here. You can ignore the
+ * frequency of the words for this question.
+ */
 
 
 object ListAccumulator2 extends AccumulatorParam[List[(Long, HashSet[String])]] {
@@ -46,7 +52,7 @@ object ListAccumulator2 extends AccumulatorParam[List[(Long, HashSet[String])]] 
 
 
 
-object partB_app2_q2 {
+object partB_App2_q2 {
 
   def main(args : Array[String]): Unit = {
 
@@ -64,105 +70,120 @@ object partB_app2_q2 {
       .set("spark.executor.cores", "1")
       .set("spark.executor.instances","20")
       .set("spark.task.cpus", "1")
-
-    var i = 0L
-
     val sc = new SparkContext(conf)
 
-    //Set the configuration of the file system
+
+    //Get the configuration of the file system to accesss
     val fs_conf = new Configuration()
-    //    fs_conf.set("fs.defaultFS", "hdfs://10.254.0.53:8020")
     val fs = FileSystem.get(fs_conf)
 
 
     //Open the directory of timeline files
     val path = new Path("storm_output_words")
-//    val path = new Path("/Users/mushahidalam/workspace/GraphX/data/q2_data")
-    val file1_iterator = fs.listFiles(path, false)
+    //    val path = new Path("/Users/mushahidalam/workspace/GraphX/data/tmp")
 
-    //    var vertexArray: Array[Edge[Int]] = new Array[Edge[Int]](0)
+    //--------------------------------Graph Generation Begins---------------------------------------------
+    //Get the directory iterator
+    val directory_iterator = fs.listFiles(path, false)
 
-    var vertexArray = sc.accumulator(ListAccumulator2.zero(Nil))(ListAccumulator2)
+    //Create an accumulator which contains array of List[(Long, HashSet[String])]
+    var verticesContentAcc = sc.accumulator(ListAccumulator.zero(Nil))(ListAccumulator)
 
-    while (file1_iterator.hasNext()) {
-      var path = file1_iterator.next().getPath().toString
+    var i = 0L //Vertex Indicies
+    while (directory_iterator.hasNext()) {
+      //Get the path of the file
+      var path = directory_iterator.next().getPath().toString
 
+      //Create an accumulator which stores words of the file in HashSet
       val AccumulatorFileContentsToHashSet = sc.accumulableCollection(HashSet[String]())
 
+      //Open the textFile in SparkContext
       var TimeLineFile = sc.textFile(path)
 
+      //Fetch each word and insert into the hashSet Accumulator
       TimeLineFile.foreach( x => AccumulatorFileContentsToHashSet += x.toString)
 
+      //Insert the HashSet into the Vertices content Accumulator
       val elem  = List[(Long, HashSet[String])]((i, AccumulatorFileContentsToHashSet.value))
-      vertexArray.add(elem)
+      verticesContentAcc.add(elem)
 
+      //Increment the Vertex index
       i += 1L
     }
 
-    val vertexRDD = sc.parallelize(vertexArray.value)
+    //Create a Vertices RDD from the Accumulator of List[Long,HashSet[String])]
+    val verticesRDD = sc.parallelize(verticesContentAcc.value)
 
-    val verticescartesianoutput = vertexRDD.cartesian(vertexRDD)
+    //Do a cartesian to check if a vertex has common words with any other vertex
+    val verticesCartesianOutput = verticesRDD.cartesian(verticesRDD)
 
-    val vertexPairAtleastOneCommonWord = verticescartesianoutput.map { case ((a: Long, b: HashSet[String]), (c: Long, d: HashSet[String]))
+    //Do a HashSet Intersect to get if there are atleast one common words
+    val vertexPairAtleastOneCommonWord = verticesCartesianOutput.map { case ((a: Long, b: HashSet[String]), (c: Long, d: HashSet[String]))
     => (a, c, Math.min(b.intersect(d).size, 1))
     }
 
+    //Filter entries which doesn't have atleast one common word
     val filteredEdgeRDD = vertexPairAtleastOneCommonWord.filter{ case (a: Long, b: Long, c: Int) => c != 0 && a!=b}
 
+    //Change the Edge Attribute to 0 and change the triplet pair of filteredRDD to Edge type
     val EdgeRDD = filteredEdgeRDD.map{case (a: Long,b:Long, c: Int)=> Edge(a,b, 0)}
 
+    //--------------------------------Graph Generation Ends---------------------------------------------
+    //Create the graph from verticesRDD and EdgeRDD
+    val graph: Graph[HashSet[String], Int] = Graph(verticesRDD, EdgeRDD)
 
-    val graph: Graph[HashSet[String], Int] = Graph(vertexRDD, EdgeRDD)
 
-
-    // Define a reduce operation to compute the highest degree vertex
+    // Define a reduce function to compute the highest degree vertex
     def max(a: (VertexId, Int), b: (VertexId, Int)): (VertexId, Int) = {
       if (a._2 > b._2) a else b
     }
 
 
-    //Compute the max outdegree vertices
+    //Compute the max outdegree vertices using the aboe reduce function
+
+    //Get a VerteRDD[Outdegree]
     val outDegreeRDD = graph.outDegrees
+
+    //First compute the max outdegree
     val maxOutDegree: (VertexId, Int) = graph.outDegrees.reduce(max)
 
+    //Filter the vertices with Max outdegree
     val outDegreeSet = outDegreeRDD.filter( x => x._2 == maxOutDegree._2)
 
 
-//    println("Max outdegree verticess")
-//    outDegreeSet.foreach(println)
-//    println("===============")
-    if(outDegreeSet.count > 0){
-      //Incase we have X=1, we stop. If X > 1, we use the next condition as a tie-breaker - among the X vertices,
-      // choose the one which has the maximum number of words (in that vertex or interval). Let's say we now have
-      // a set of Y vertices.
+
+    //Incase we have X=1, we stop.
+    if(outDegreeSet.count > 1){
+      //If X > 1, we use the next condition as a tie-breaker - among the X vertices,
+      // choose the one which has the maximum number of words (in that vertex or interval).
+
+      //Join the vertexRDD[outdegree] with the graph vertices
       val verticesMaxOutdegree = graph.vertices.join(outDegreeSet)
 
-//      println("Joing Output")
-//      verticesMaxOutdegree.foreach(println)
+      //Get the number of maximum words in a Max Outdegree vertices
       def maxWords(a: (VertexId, (HashSet[String],Int)), b: (VertexId, (HashSet[String],Int))): (VertexId, (HashSet[String],Int)) = {
         if (a._2._1.size > b._2._1.size) a else b
       }
-
       val FinalVertices:(VertexId, (HashSet[String],Int)) = graph.vertices.join(outDegreeSet).reduce(maxWords)
 
 
-      //Final Vertices with max words and outdegree
-
+      //Final Vertices with max outdegree to the one which contain maximum words
+      //Let's say we now have
+      // a set of Y vertices. Incase we have Y=1, this is the most popular vertex.
       val maxWordsVertices = verticesMaxOutdegree.filter(x => x._2._1.size == FinalVertices._2._1.size)
 
-      println(maxWordsVertices.values.first()._2)
-      val output_path = new Path("/home/ubuntu/output/q2_output.txt")
-//      val output_path = new Path("/Users/mushahidalam/workspace/GraphX/data/output/q2_output.txt")
+      //If Y!=1, randomly break the tie by selecting the first vertex
 
-      val output_file = fs.create(output_path)
-      output_file.writeByte(maxWordsVertices.values.first()._2)
-      output_file.close()
+      println("==============================================")
+      println("Application2 Question 2: Most popular Vertex " + maxWordsVertices.values.first()._2)
+      println("==============================================")
 
-      //      println("Size" +FinalVertices._2._1.size)
-//      maxWordsVertices.foreach(println)
-
-
-      //Filter on Max words
+    }
+    else{
+      println("==============================================")
+      println("Application2 Question 2: Most popular Vertex" )
+      outDegreeSet.foreach(println)
+      println("==============================================")
     }
 
 

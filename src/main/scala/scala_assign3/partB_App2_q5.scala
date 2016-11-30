@@ -1,41 +1,19 @@
 package scala_assign3
 
-
 /**
- * Created by mushahidalam on 11/20/16.
+ * Created by mushahidalam on 11/27/16.
  */
-
-import java.io.{PrintWriter, FileWriter}
-
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{Path, FileSystem}
-import org.apache.hadoop.io.LongWritable
-import org.apache.spark.storage.StorageLevel
-import org.apache.spark.util.AccumulatorV2
+import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.spark.graphx.{Graph, _}
+import org.apache.spark.{AccumulatorParam, SparkConf, SparkContext}
 
 import scala.collection.mutable.HashSet
-import scala.io.Source
-import java.net.URL
-import java.io._
 
-import org.apache.spark.{AccumulatorParam, SparkContext, SparkConf}
 
-import org.apache.spark.rdd.PairRDDFunctions
-import org.apache.spark.graphx._
-import org.apache.spark.rdd.RDD
-import org.apache.spark.graphx.util.GraphGenerators
-import org.apache.spark.graphx.{Graph, VertexId}
-import org.apache.spark.sql.SparkSession
-import org.apache.spark.api.java.{JavaPairRDD, JavaRDD}
-import java.io
 
-/*
- *Question 1:
- *Find the number of edges where the number of words in the source vertex is strictly larger
- *than the number of words in the destination vertex. Hint: to solve this question please refer
- *to the Property Graph examples from here.
- */
-object ListAccumulator extends AccumulatorParam[List[(Long, HashSet[String])]] {
+
+object ListAccumulator6 extends AccumulatorParam[List[(Long, HashSet[String])]] {
 
   val vertex_property =  List[(Long,HashSet[String])]()
   def zero(initialValue: List[(Long, HashSet[String])]): List[(Long, HashSet[String])] = {
@@ -51,27 +29,25 @@ object ListAccumulator extends AccumulatorParam[List[(Long, HashSet[String])]] {
   }
 }
 
-object partB_App2_q1 {
-
+object partB_App2_q5 {
   def main(args : Array[String]): Unit = {
 
 
     val conf = new SparkConf()
 //      .setMaster("local[1]")
 //      .setAppName("App")
-      .setMaster("spark://10.254.0.53:7077")
-      .setAppName("App")
-      .set("spark.driver.memory", "8g")
-      .set("spark.driver.cores", "2")
-      .set("spark.eventLog.enabled", "true")
-      .set("spark.eventLog.dir", "hdfs:/tmp/spark-events")
-      .set("spark.executor.memory", "4g")
-      .set("spark.executor.cores", "1")
-      .set("spark.executor.instances","20")
-      .set("spark.task.cpus", "1")
+          .setMaster("spark://10.254.0.53:7077")
+          .setAppName("App")
+          .set("spark.driver.memory", "8g")
+          .set("spark.driver.cores", "2")
+          .set("spark.eventLog.enabled", "true")
+          .set("spark.eventLog.dir", "hdfs:/tmp/spark-events")
+          .set("spark.executor.memory", "4g")
+          .set("spark.executor.cores", "1")
+          .set("spark.executor.instances","20")
+          .set("spark.task.cpus", "1")
 
     val sc = new SparkContext(conf)
-
 
     //Get the configuration of the file system to accesss
     val fs_conf = new Configuration()
@@ -87,7 +63,7 @@ object partB_App2_q1 {
     val directory_iterator = fs.listFiles(path, false)
 
     //Create an accumulator which contains array of List[(Long, HashSet[String])]
-    var verticesContentAcc = sc.accumulator(ListAccumulator.zero(Nil))(ListAccumulator)
+    var verticesContentAcc = sc.accumulator(ListAccumulator6.zero(Nil))(ListAccumulator6)
 
     var i = 0L //Vertex Indicies
     while (directory_iterator.hasNext()) {
@@ -132,14 +108,21 @@ object partB_App2_q1 {
     //Create the graph from verticesRDD and EdgeRDD
     val graph: Graph[HashSet[String], Int] = Graph(verticesRDD, EdgeRDD)
 
-    //Filter and count the number of edges where the number of words in the source vertex is strictly larger than the number of words in the destination vertex.
-    var Edgecount = graph.triplets.filter{f => (f.srcAttr.size > f.dstAttr.size)}.count()
+    //Transform the graph vertices to contain the total degree
+    val DegreeGraph: Graph[(HashSet[String],Int), Int] =
+      graph.outerJoinVertices(graph.degrees){case(vid, b:HashSet[String], degOpt) => (b, degOpt.getOrElse(0))}
+
+
+    //Get the subgraph where the vertexpredicate as Total degree is not zero
+    var LargestSubgraph = DegreeGraph.subgraph(vpred = (id, attr) => attr._2 != 0)
 
     println("==============================================")
-    println("Application2 Question 1: Number of edges " + Edgecount)
+    println("Application2 Question 3: average number of words in every neighbor of a vertex")
+    println("Largest Subgraph Vertices count :" + LargestSubgraph.vertices.count())
     println("==============================================")
+
     sc.stop()
 
   }
-}
 
+}

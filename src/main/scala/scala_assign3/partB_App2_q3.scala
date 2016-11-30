@@ -44,7 +44,11 @@ object ListAccumulator3 extends AccumulatorParam[List[(Long, HashSet[String])]] 
     vertex_property:+ ele
   }
 }
-
+/*
+ *Question 3:
+ *Find the average number of words in every neighbor of a vertex. Hint: to solve this question please refer
+ * to the Neighborhood Aggregation examples from here
+ */
 
 object partB_App2_q3 {
 
@@ -52,93 +56,107 @@ object partB_App2_q3 {
 
 
     val conf = new SparkConf()
-      .setMaster("local[1]")
-      .setAppName("App")
-    //      .setMaster("spark://10.254.0.53:7077")
-    //      .setAppName("App")
-    //      .set("spark.driver.memory", "8g")
-    //      .set("spark.driver.cores", "2")
-    //      .set("spark.eventLog.enabled", "true")
-    //      .set("spark.eventLog.dir", "hdfs:/tmp/spark-events")
-    //      .set("spark.executor.memory", "4g")
-    //      .set("spark.executor.cores", "1")
-    //      .set("spark.executor.instances","20")
-    //      .set("spark.task.cpus", "1")
-
-    var i = 0L
+//      .setMaster("local[1]")
+//      .setAppName("App")
+          .setMaster("spark://10.254.0.53:7077")
+          .setAppName("App")
+          .set("spark.driver.memory", "8g")
+          .set("spark.driver.cores", "2")
+          .set("spark.eventLog.enabled", "true")
+          .set("spark.eventLog.dir", "hdfs:/tmp/spark-events")
+          .set("spark.executor.memory", "4g")
+          .set("spark.executor.cores", "1")
+          .set("spark.executor.instances","20")
+          .set("spark.task.cpus", "1")
 
     val sc = new SparkContext(conf)
 
-    //Set the configuration of the file system
+    //Get the configuration of the file system to accesss
     val fs_conf = new Configuration()
-    //    fs_conf.set("fs.defaultFS", "hdfs://10.254.0.53:8020")
     val fs = FileSystem.get(fs_conf)
 
 
     //Open the directory of timeline files
-    //    val path = new Path("storm_output_words")
-    val path = new Path("/Users/mushahidalam/workspace/GraphX/data/q3_data")
-    val file1_iterator = fs.listFiles(path, false)
+    val path = new Path("storm_output_words")
+    //    val path = new Path("/Users/mushahidalam/workspace/GraphX/data/tmp")
 
-    //    var vertexArray: Array[Edge[Int]] = new Array[Edge[Int]](0)
+    //--------------------------------Graph Generation Begins---------------------------------------------
+    //Get the directory iterator
+    val directory_iterator = fs.listFiles(path, false)
 
-    var vertexArray = sc.accumulator(ListAccumulator3.zero(Nil))(ListAccumulator3)
+    //Create an accumulator which contains array of List[(Long, HashSet[String])]
+    var verticesContentAcc = sc.accumulator(ListAccumulator.zero(Nil))(ListAccumulator)
 
-    while (file1_iterator.hasNext()) {
-      var path = file1_iterator.next().getPath().toString
+    var i = 0L //Vertex Indicies
+    while (directory_iterator.hasNext()) {
+      //Get the path of the file
+      var path = directory_iterator.next().getPath().toString
 
-
+      //Create an accumulator which stores words of the file in HashSet
       val AccumulatorFileContentsToHashSet = sc.accumulableCollection(HashSet[String]())
 
+      //Open the textFile in SparkContext
       var TimeLineFile = sc.textFile(path)
 
+      //Fetch each word and insert into the hashSet Accumulator
       TimeLineFile.foreach( x => AccumulatorFileContentsToHashSet += x.toString)
 
-      println(AccumulatorFileContentsToHashSet.value)
+      //Insert the HashSet into the Vertices content Accumulator
       val elem  = List[(Long, HashSet[String])]((i, AccumulatorFileContentsToHashSet.value))
-      vertexArray.add(elem)
+      verticesContentAcc.add(elem)
 
+      //Increment the Vertex index
       i += 1L
     }
 
-    val vertexRDD = sc.parallelize(vertexArray.value)
+    //Create a Vertices RDD from the Accumulator of List[Long,HashSet[String])]
+    val verticesRDD = sc.parallelize(verticesContentAcc.value)
 
-    val verticescartesianoutput = vertexRDD.cartesian(vertexRDD)
+    //Do a cartesian to check if a vertex has common words with any other vertex
+    val verticesCartesianOutput = verticesRDD.cartesian(verticesRDD)
 
-    val vertexPairAtleastOneCommonWord = verticescartesianoutput.map { case ((a: Long, b: HashSet[String]), (c: Long, d: HashSet[String]))
+    //Do a HashSet Intersect to get if there are atleast one common words
+    val vertexPairAtleastOneCommonWord = verticesCartesianOutput.map { case ((a: Long, b: HashSet[String]), (c: Long, d: HashSet[String]))
     => (a, c, Math.min(b.intersect(d).size, 1))
     }
 
+    //Filter entries which doesn't have atleast one common word
     val filteredEdgeRDD = vertexPairAtleastOneCommonWord.filter{ case (a: Long, b: Long, c: Int) => c != 0 && a!=b}
 
+    //Change the Edge Attribute to 0 and change the triplet pair of filteredRDD to Edge type
     val EdgeRDD = filteredEdgeRDD.map{case (a: Long,b:Long, c: Int)=> Edge(a,b, 0)}
 
-    val graph: Graph[HashSet[String], Int] = Graph(vertexRDD, EdgeRDD)
+    //--------------------------------Graph Generation Ends---------------------------------------------
+    //Create the graph from verticesRDD and EdgeRDD
+    val graph: Graph[HashSet[String], Int] = Graph(verticesRDD, EdgeRDD)
 
+
+    //Transform graph such that vertex contains the outdegree
     val DegreeGraph: Graph[(HashSet[String],Int), Int] =
       graph.outerJoinVertices(graph.outDegrees){case(vid, b:HashSet[String], degOpt) => (b, degOpt.getOrElse(0))}
 
-
+    //Send function for the AggregateMessage Api which sends neighbour vertex words count.
     def SendNeighbourAtrrSizeToSource(triplet: EdgeContext[(HashSet[String],Int), Int, Int]) {
       triplet.sendToSrc(triplet.dstAttr._1.size)
     }
+    //Reduce function for the AggregateMessage Api
     def AccumulateNeighbourAttrSize(a: Int, b: Int): Int = a + b
-    
+
+    //Collect the neighbour words count sum using AggregateMessage Api
     val result = DegreeGraph.aggregateMessages[Int](SendNeighbourAtrrSizeToSource, AccumulateNeighbourAttrSize)
 
+    //Divide the neighbour words count sum/Outdegree = average number of words in every neighbor of a vertex
     val graphWithNeighbourAverage:Graph[Float, Int] = DegreeGraph.outerJoinVertices(result)({case(vid:VertexId,vertexAtr:(HashSet[String],Int),total:Option[Int]) => if (vertexAtr._2 >0)  total.get.asInstanceOf[Int]/vertexAtr._2 else 0})
 
+    //Remove vertices with outdegree Zero
     val filteredResultGraph = graphWithNeighbourAverage.vertices.filter{case(a:VertexId,b:Float) => b != 0}
 
+    filteredResultGraph.saveAsTextFile("/home/ubuntu/output/App2Question3_output.txt")
+
+    println("==============================================")
+    println("Application2 Question 3: average number of words in every neighbor of a vertex")
     filteredResultGraph.foreach(println)
-//    val output_path = new Path("/home/ubuntu/output/final_output.txt")
-//    val output_path = new Path("/Users/mushahidalam/workspace/GraphX/data/output/q3_output.txt")
-//
-//    val output_file = fs.create(output_path)
-//    output_file.writeLong(Edgecount)
-//    output_file.close()
-//
-//    println(Edgecount)
+    println("==============================================")
 
     sc.stop()
 

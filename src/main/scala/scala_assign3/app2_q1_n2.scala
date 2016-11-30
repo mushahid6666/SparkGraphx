@@ -57,7 +57,7 @@ object app2_q1_n2 {
     val path = new Path("hdfs:///user/ubuntu/storm_output_words/")
 //    val path = new Path("/Users/mushahidalam/workspace/GraphX/data/tmp/")
 
-    val file1_iterator = fs.listFiles(path, false)
+    val directory_iterator = fs.listFiles(path, false)
     val file2_iterator = fs.listFiles(path, false)
 
 //    val fw = new PrintWriter(new File("edge_file_question1.txt"))
@@ -71,8 +71,8 @@ object app2_q1_n2 {
     //Generate vertex array
     var vertexArray: Array[(Long,Int)] = new Array[(Long, Int)](0)
 
-    while (file1_iterator.hasNext()) {
-      var path = file1_iterator.next().getPath().toString
+    while (directory_iterator.hasNext()) {
+      var path = directory_iterator.next().getPath().toString
       val file1:RDD[(Char)] = sc.parallelize(path).toJavaRDD()
 //        .toJavaRDD().persist(StorageLevel.MEMORY_ONLY)
 
@@ -96,7 +96,7 @@ object app2_q1_n2 {
             edgeArray +:= Edge(j,i,1)
           }
 
-          print(file1_iterator.toString, file2_iterator.toString,count)
+          print(directory_iterator.toString, file2_iterator.toString,count)
         }
         j+=1
       }

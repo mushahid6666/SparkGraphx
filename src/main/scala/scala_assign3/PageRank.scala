@@ -33,23 +33,17 @@ object PageRank {
 
     val sc = new SparkContext(conf)
 
-    val graph= GraphLoader.edgeListFile(sc, "data/web-BerkStan.txt", true).partitionBy(PartitionStrategy. RandomVertexCut)
-    //val graph= GraphLoader.edgeListFile(sc, "data/soc-LiveJournal1.txt", true)
-
-
+    val graph= GraphLoader.edgeListFile(sc, "data/soc-LiveJournal1.txt", true).partitionBy(PartitionStrategy. RandomVertexCut)
 
     val src: VertexId = -1L
 
     var rankGraph:Graph[Double, Double] = graph
-      .outerJoinVertices(graph.outDegrees) { (vid, vdata, deg) => deg.getOrElse(0) }
-      .mapTriplets(e => 1.0 / e.srcAttr, TripletFields.Src)
-      .mapVertices{(id, attr) => 1.0}
+      .outerJoinVertices(graph.outDegrees) { (vid, vdata, deg) => deg.getOrElse(0) }//Each vertex now contains num of neighbours(outdegree) as attr
+      .mapTriplets(e => 1.0 / e.srcAttr, TripletFields.Src)//Edge Contains 1.0/|neighbors(p)|
+      .mapVertices{(id, attr) => 1.0} // Vertices contain intial rank as 1.0
 
 
     var i = 0
-
-    var resetProb: Double = 0.15
-
 
     var prevRankGraph: Graph[Double, Double] = null
 
@@ -57,15 +51,20 @@ object PageRank {
     while (i < 20) {
       rankGraph.cache()
 
-      val rankUpdates = rankGraph.aggregateMessages[Double](
-      ctx => ctx.sendToDst(ctx.srcAttr * ctx.attr), _ + _, TripletFields.Src)
+      //Send to each vertex (vertex.Attrx(Rank) * Edge.attr(1.0/neighbour) = rank(p)/|neighbors(p)|
+      //Aggregate the received contributions from neighbours at each vertex _+_
+      //And TripletFields.Src is used to notify GraphX that only src part of the EdgeContext will
+      // be needed allowing GraphX to select an optimized join strategy
+      val Contributions = rankGraph.aggregateMessages[Double](
+      triplets => triplets.sendToDst(triplets.srcAttr * triplets.attr), _ + _, TripletFields.Src)
 
       prevRankGraph = rankGraph
 
-      val rPrb = (src: VertexId, id: VertexId) => resetProb
 
-      rankGraph = rankGraph.joinVertices(rankUpdates) {
-        (id, oldRank, msgSum) => rPrb(src, id) + (1.0 - resetProb) * msgSum
+      //Update the rank of each vertex by doing a join of prevrank graph and Contributions recieved from
+      //neighbouring vertices and set each page's rank to 0.15 + 0.85 X contributions.
+      rankGraph = rankGraph.joinVertices(Contributions) {
+        (id, oldRank, contrib) => 0.15 + 0.85 * contrib
       }.cache()
 
 
