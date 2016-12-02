@@ -1,24 +1,9 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+package scala_assign3
 
-// scalastyle:off println
-package org.apache.spark.examples
-
+import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.storage.StorageLevel;
+import org.apache.spark.Partitioner;
 
 /**
  * Computes the PageRank of URLs from an input file. Input file should
@@ -32,6 +17,16 @@ import org.apache.spark.sql.SparkSession
  * This is an example implementation for learning how to use Spark. For more conventional use,
  * please refer to org.apache.spark.graphx.lib.PageRank
  */
+class CustomPartitioner extends Partitioner {
+
+  override def numPartitions: Int = 20
+
+  override def getPartition(key: Any):Int = {
+    var v=  key.asInstanceOf[String]
+    return Integer.parseInt(v) % this.numPartitions
+  }
+}
+
 object SparkPageRank {
 
   def showWarning() {
@@ -50,9 +45,24 @@ object SparkPageRank {
 
     showWarning()
 
+    val conf = new SparkConf()
+//      .setMaster("local[1]")
+//      .setAppName("App")
+          .setMaster("spark://10.254.0.53:7077")
+      .setAppName("App")
+      .set("spark.driver.memory", "8g")
+      .set("spark.driver.cores", "2")
+      .set("spark.eventLog.enabled", "true")
+      .set("spark.eventLog.dir", "hdfs:/tmp/spark-events")
+      .set("spark.executor.memory", "4g")
+      .set("spark.executor.cores", "1")
+      .set("spark.executor.instances","20")
+      .set("spark.task.cpus", "1")
+
     val spark = SparkSession
       .builder
       .appName("SparkPageRank")
+      .config(conf)
       .getOrCreate()
 
     val iters = if (args.length > 1) args(1).toInt else 10
@@ -60,7 +70,7 @@ object SparkPageRank {
     val links = lines.map{ s =>
       val parts = s.split("\\s+")
       (parts(0), parts(1))
-    }.distinct().groupByKey().cache()
+    }.distinct().groupByKey().persist(StorageLevel.MEMORY_ONLY)
     var ranks = links.mapValues(v => 1.0)
 
     for (i <- 1 to iters) {
@@ -71,8 +81,7 @@ object SparkPageRank {
       ranks = contribs.reduceByKey(_ + _).mapValues(0.15 + 0.85 * _)
     }
 
-    val output = ranks.collect()
-    output.foreach(tup => println(tup._1 + " has rank: " + tup._2 + "."))
+    ranks.saveAsTextFile("hdfs:/home/ubuntu/output")
 
     spark.stop()
   }
