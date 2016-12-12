@@ -144,6 +144,7 @@ object partB_App2_q6 {
 
     val FinalWordsCount:(VertexId,Map[String, Int]) = graph.vertices.reduce(WordsCountMap)
 
+
     val PopularWord = FinalWordsCount._2.max
 
     println("===================================================")
@@ -151,7 +152,7 @@ object partB_App2_q6 {
     println("Popular word: " + PopularWord)
     val ResultVertices = graph.vertices.filter{case (x:(VertexId,Map[String,Int])) => if(x._2.get(PopularWord._1) != None ) true else false }
 
-    println("Number of time intervals which have the most popular word: "+ ResultVertices.count())
+    println("Number of time intervals which have the most popular word: "+ ResultVertices.collect.size)
     println("==============================================")
 
     sc.stop()

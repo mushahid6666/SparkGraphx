@@ -1,22 +1,12 @@
 package scala_assign3
 
-
-import org.apache.spark.SparkContext
-import org.apache.spark.graphx._
-import org.apache.spark.rdd.RDD
-import org.apache.spark.graphx.util.GraphGenerators
-import org.apache.spark.graphx.{Graph, VertexId}
-import org.apache.spark.sql.SparkSession
-import org.apache.spark.SparkConf
-
-import scala.io.Source
-import scala.reflect.ClassTag
+import org.apache.spark.graphx.{TripletFields, Graph, PartitionStrategy, GraphLoader}
+import org.apache.spark.{SparkContext, SparkConf}
 
 /**
- * @author ${mushahid.alam}
+ * Created by mushahidalam on 12/2/16.
  */
-
-object graphXPageRank {
+object graphXPageRankEdge1 {
   def main(args: Array[String]): Unit = {
 
     System.out.println("Usage: Assign2PageRank <DataSet File> <Number of Iterations")
@@ -36,7 +26,7 @@ object graphXPageRank {
 
     val sc = new SparkContext(conf)
 
-    val graph = GraphLoader.edgeListFile(sc, args(0), false, 20).partitionBy(PartitionStrategy.EdgePartition2D)
+    val graph = GraphLoader.edgeListFile(sc, args(0), false, 20).partitionBy(PartitionStrategy.EdgePartition1D)
 
     val Iterations = if(args.length > 1) args(1).toInt else 10
 
@@ -66,7 +56,7 @@ object graphXPageRank {
       i += 1
     }
 
-//    PageRankGraph.vertices.foreach(println)
+    //    PageRankGraph.vertices.foreach(println)
     PageRankGraph.vertices.saveAsTextFile("hdfs:/home/ubuntu/output")
     sc.stop()
 

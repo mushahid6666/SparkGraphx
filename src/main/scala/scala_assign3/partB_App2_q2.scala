@@ -80,7 +80,7 @@ object partB_App2_q2 {
 
     //Open the directory of timeline files
     val path = new Path("storm_output_words")
-    //    val path = new Path("/Users/mushahidalam/workspace/GraphX/data/tmp")
+//        val path = new Path("/Users/mushahidalam/workspace/GraphX/data/tmp")
 
     //--------------------------------Graph Generation Begins---------------------------------------------
     //Get the directory iterator
@@ -150,10 +150,12 @@ object partB_App2_q2 {
     //Filter the vertices with Max outdegree
     val outDegreeSet = outDegreeRDD.filter( x => x._2 == maxOutDegree._2)
 
+    val result1 = outDegreeSet.collect.size
+
 
 
     //Incase we have X=1, we stop.
-    if(outDegreeSet.count > 1){
+    if(result1 > 1){
       //If X > 1, we use the next condition as a tie-breaker - among the X vertices,
       // choose the one which has the maximum number of words (in that vertex or interval).
 
@@ -172,17 +174,21 @@ object partB_App2_q2 {
       // a set of Y vertices. Incase we have Y=1, this is the most popular vertex.
       val maxWordsVertices = verticesMaxOutdegree.filter(x => x._2._1.size == FinalVertices._2._1.size)
 
+      val Answer = maxWordsVertices.collect()
+
+
+
       //If Y!=1, randomly break the tie by selecting the first vertex
 
       println("==============================================")
-      println("Application2 Question 2: Most popular Vertex " + maxWordsVertices.values.first()._2)
+      println("Collect Application2 Question 2: Most popular Vertex " + Answer(0)._1)
       println("==============================================")
 
     }
     else{
+      val Answer= outDegreeSet.collect()
       println("==============================================")
-      println("Application2 Question 2: Most popular Vertex" )
-      outDegreeSet.foreach(println)
+      println(" Application2 Question 2: Most popular Vertex" + Answer(0))
       println("==============================================")
     }
 

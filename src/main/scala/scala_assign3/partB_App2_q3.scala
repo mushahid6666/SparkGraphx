@@ -128,6 +128,7 @@ object partB_App2_q3 {
 
     //--------------------------------Graph Generation Ends---------------------------------------------
     //Create the graph from verticesRDD and EdgeRDD
+
     val graph: Graph[HashSet[String], Int] = Graph(verticesRDD, EdgeRDD)
 
 
@@ -155,7 +156,8 @@ object partB_App2_q3 {
 
     println("==============================================")
     println("Application2 Question 3: average number of words in every neighbor of a vertex")
-    filteredResultGraph.foreach(println)
+    filteredResultGraph.collect.foreach(println)
+    println("RDD saved as textFile to /home/ubuntu/output/App2Question3_output.txt in HDFS ")
     println("==============================================")
 
     sc.stop()

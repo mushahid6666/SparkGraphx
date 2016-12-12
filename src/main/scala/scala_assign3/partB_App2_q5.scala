@@ -56,7 +56,7 @@ object partB_App2_q5 {
 
     //Open the directory of timeline files
     val path = new Path("storm_output_words")
-    //    val path = new Path("/Users/mushahidalam/workspace/GraphX/data/tmp")
+//        val path = new Path("/Users/mushahidalam/workspace/GraphX/data/Extra_q2")
 
     //--------------------------------Graph Generation Begins---------------------------------------------
     //Get the directory iterator
@@ -113,12 +113,17 @@ object partB_App2_q5 {
       graph.outerJoinVertices(graph.degrees){case(vid, b:HashSet[String], degOpt) => (b, degOpt.getOrElse(0))}
 
 
-    //Get the subgraph where the vertexpredicate as Total degree is not zero
-    var LargestSubgraph = DegreeGraph.subgraph(vpred = (id, attr) => attr._2 != 0)
+    //Get the connected components of the graph
+    //Solution 1
+    val connectedComponents = DegreeGraph.connectedComponents()
 
+    //Group the vertices based on the compnenet and map them to contain the size
+    //Order based on size and get the max
+    val connected = connectedComponents.vertices.groupBy(_._2)
+                    .map(p => (p._1,p._2.size)).
+                    max()(Ordering.by(_._2))
     println("==============================================")
-    println("Application2 Question 3: average number of words in every neighbor of a vertex")
-    println("Largest Subgraph Vertices count :" + LargestSubgraph.vertices.count())
+    println("Largest Subgraph Vertices count :" + connected._2)
     println("==============================================")
 
     sc.stop()

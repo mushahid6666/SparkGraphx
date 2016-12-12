@@ -70,7 +70,7 @@ object SparkPageRank {
     val links = lines.map{ s =>
       val parts = s.split("\\s+")
       (parts(0), parts(1))
-    }.distinct().groupByKey().persist(StorageLevel.MEMORY_ONLY)
+    }.distinct().groupByKey(new CustomPartitioner()).persist(StorageLevel.MEMORY_ONLY)
     var ranks = links.mapValues(v => 1.0)
 
     for (i <- 1 to iters) {
